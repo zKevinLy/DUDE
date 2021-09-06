@@ -7,8 +7,6 @@ import discord
 from pathlib import Path
 
 
-
-
 def discordInit(DISCORD_TOKEN):
     symbol = '='
     intents = discord.Intents().all()
@@ -16,17 +14,13 @@ def discordInit(DISCORD_TOKEN):
     bot = commands.Bot(command_prefix=symbol,intents=intents)
 
     youtube_dl.utils.bug_reports_message = lambda: ''
-    ytdl_format_options = {
+    ytdl_format_options={
         'format': 'bestaudio/best',
-        'restrictfilenames': True,
+        'extractaudio': True,
         'noplaylist': True,
-        'nocheckcertificate': True,
-        'ignoreerrors': False,
-        'logtostderr': False,
-        'quiet': True,
-        'no_warnings': True,
+        'audioformat': 'mp3',
         'default_search': 'auto',
-        'source_address': '0.0.0.0' # bind to ipv4 since ipv6 addresses cause issues sometimes
+        'source_address': '0.0.0.0',
     }
     ytdl = youtube_dl.YoutubeDL(ytdl_format_options)
     class YTDLSource(discord.PCMVolumeTransformer):
@@ -43,19 +37,23 @@ def discordInit(DISCORD_TOKEN):
             if 'entries' in data:
                 # take first item from a playlist
                 data = data['entries'][0]
+                print(data)
             filename = data['title'] if stream else ytdl.prepare_filename(data)
             return filename
 
 
     @bot.command(name='play', help=f'{symbol} play <song_link>')
     async def play(ctx,url):
-        await join(ctx)
-        server = ctx.message.guild
-        voice_channel = server.voice_client
-        async with ctx.typing():
-            filename = await YTDLSource.from_url(url, loop=bot.loop)
-            voice_channel.play(discord.FFmpegPCMAudio(executable= 'ffmpeg.exe', source=filename))
-        await ctx.send(f'**Now playing:** {filename}')
+        try:
+            voice_client = ctx.message.guild.voice_client
+            server = ctx.message.guild
+            voice_channel = server.voice_client
+            async with ctx.typing():
+                filename = await YTDLSource.from_url(url, loop=bot.loop)
+                voice_channel.play(discord.FFmpegPCMAudio(source=filename))
+            await ctx.send(f'**Now playing:** {filename}')
+        except:
+            await ctx.send(f'Put me in a channel')
 
     @bot.command(name='join', help='Bot joins voice channel')
     async def join(ctx):
@@ -106,7 +104,6 @@ def discordInit(DISCORD_TOKEN):
         print(f'{bot.user.name} has connected to Discord!')
         await bot.change_presence(activity=discord.Activity(type=discord.ActivityType.watching, name=f"{symbol}help"))
 
-       
     bot.run(DISCORD_TOKEN)
 
 if __name__ == '__main__':
