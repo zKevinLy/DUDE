@@ -44,16 +44,13 @@ def discordInit(DISCORD_TOKEN):
 
     @bot.command(name='play', help=f'{symbol} play <song_link>')
     async def play(ctx,url):
-        try:
-            voice_client = ctx.message.guild.voice_client
-            server = ctx.message.guild
-            voice_channel = server.voice_client
-            async with ctx.typing():
-                filename = await YTDLSource.from_url(url, loop=bot.loop)
-                voice_channel.play(discord.FFmpegPCMAudio(source=filename))
-            await ctx.send(f'**Now playing:** {filename}')
-        except:
-            await ctx.send(f'Put me in a channel')
+        voice_client = ctx.message.guild.voice_client
+        server = ctx.message.guild
+        voice_channel = server.voice_client
+        async with ctx.typing():
+            filename = await YTDLSource.from_url(url, loop=bot.loop)
+            voice_channel.play(discord.FFmpegPCMAudio(source=filename))
+        await ctx.send(f'**Now playing:** {filename}')
 
     @bot.command(name='join', help='Bot joins voice channel')
     async def join(ctx):
