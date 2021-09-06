@@ -1,111 +1,119 @@
 from datetime import datetime, timedelta
+from discord.ext import commands
 from dotenv import load_dotenv
-import numpy as np
-import re
+import youtube_dl
 import os
 import random
 import discord
 
-load_dotenv()
-DISCORD_TOKEN = os.getenv('DISCORD_TOKEN')
-
-class DUDE:
-    def __init__(self):
-        # see which request is being used
-        self.requestInfo = dict()
-
-    # sets up requestInfo for processing later
-    def parse(self, sentence):
-        self.reset()
-        words = [z.lower() for z in re.split('[^a-zA-Z0-9-]', sentence) if len(z) > 0]
-        # print(words)
-        for c,w in enumerate(words):
-            if w == 'play':
-                self.requestInfo['play'] = True
-            elif w=='help':
-                self.requestInfo['help'] = True
-
-    def getRequest(self):
-        return self.requestInfo 
-
-    def reply(self):
-        #sends multiple replies if necessary
-        results = []
-        if self.requestInfo['play']:
-            results.append("played")
-        elif self.requestInfo['help']:
-            results.append("help")
-        elif self.requestInfo['symbol']:
-            results.append("symbol")
-        return results
-
-    def reset(self):
-        self.requestInfo.clear()
-        self.requestInfo['play'] = None
-        self.requestInfo['help'] = None
 
 
-def discordInit(DUDE, DISCORD_TOKEN):
-    symbol = '.'
-    client = discord.Client()
+def discordInit(DISCORD_TOKEN):
+    symbol = '='
+    intents = discord.Intents().all()
+    client = discord.Client(intents=intents)
+    bot = commands.Bot(command_prefix=symbol,intents=intents)
 
-    @client.event
-    async def on_ready():
-        print(f'{client.user.name} has connected to Discord!')
-        await client.change_presence(activity=discord.Activity(type=discord.ActivityType.watching, name=f"{symbol}help"))
+    youtube_dl.utils.bug_reports_message = lambda: ''
+    ytdl_format_options = {
+        'format': 'bestaudio/best',
+        'restrictfilenames': True,
+        'noplaylist': True,
+        'nocheckcertificate': True,
+        'ignoreerrors': False,
+        'logtostderr': False,
+        'quiet': True,
+        'no_warnings': True,
+        'default_search': 'auto',
+        'source_address': '0.0.0.0' # bind to ipv4 since ipv6 addresses cause issues sometimes
+    }
+    ffmpeg_options = {
+        'options': '-vn'
+    }
+    ytdl = youtube_dl.YoutubeDL(ytdl_format_options)
+    class YTDLSource(discord.PCMVolumeTransformer):
+        def __init__(self, source, *, data, volume=0.5):
+            super().__init__(source, volume)
+            self.data = data
+            self.title = data.get('title')
+            self.url = ""
+
+        @classmethod
+        async def from_url(cls, url, *, loop=None, stream=False):
+            loop = loop or asyncio.get_event_loop()
+            data = await loop.run_in_executor(None, lambda: ytdl.extract_info(url, download=not stream))
+            if 'entries' in data:
+                # take first item from a playlist
+                data = data['entries'][0]
+            filename = data['title'] if stream else ytdl.prepare_filename(data)
+            return filename
 
 
-    @client.event
+    @bot.command(name='play', help=f'{symbol} play <song_link>')
+    async def play(ctx,url):
+        await join(ctx)
+        server = ctx.message.guild
+        voice_channel = server.voice_client
+        async with ctx.typing():
+            filename = await YTDLSource.from_url(url, loop=bot.loop)
+            voice_channel.play(discord.FFmpegPCMAudio(executable="ffmpeg.exe", source=filename))
+        await ctx.send(f'**Now playing:** {filename}')
+
+    @bot.command(name='join', help='Bot joins voice channel')
+    async def join(ctx):
+        if not ctx.message.author.voice:
+            await ctx.send(f"{ctx.message.author.name} is not in a voice channel")
+            return 
+        channel = ctx.message.author.voice.channel
+        await channel.connect()
+
+    @bot.command(name='pause', help='Pause the song')
+    async def pause(ctx):
+        voice_client = ctx.message.guild.voice_client
+        if voice_client.is_playing():
+            voice_client.pause()
+            return
+        await ctx.send("Nothing is playing")
+
+    @bot.command(name='resume', help='Resumes the song')
+    async def resume(ctx):
+        voice_client = ctx.message.guild.voice_client
+        if voice_client.is_paused():
+            voice_client.resume()
+            return
+        await ctx.send("No songs to resume")
+
+    @bot.command(name='leave', help='Make the bot leave the voice channel')
+    async def leave(ctx):
+        voice_client = ctx.message.guild.voice_client
+        if voice_client.is_connected():
+            await voice_client.disconnect()
+            return
+        await ctx.send("Not connected to a voice channel")
+    
+    @bot.command(name='stop', help='Stops the song')
+    async def stop(ctx):
+        voice_client = ctx.message.guild.voice_client
+        if voice_client.is_playing():
+            voice_client.stop()
+            return
+        await ctx.send("Nothing is playing")
+
+    @bot.event
     async def on_message(message):
-        if message.author == client.user or not message.content:
-            return
+       await bot.process_commands(message)
 
-        command = message.content[0].lower()
-        request = message.content[1:].lower()
+    @bot.event
+    async def on_ready():
+        print(f'{bot.user.name} has connected to Discord!')
+        await bot.change_presence(activity=discord.Activity(type=discord.ActivityType.watching, name=f"{symbol}help"))
 
-        if command != f'{symbol}':
-            return
-            
-        embedVar = discord.Embed(color=0x00ff00)
-        
-        DUDE.parse(request)
-        requestInfo = DUDE.getRequest()        
-        replies = DUDE.reply()
-
-        if requestInfo['play']:
-            ret = "test"
-            requestType = "play"
-        else:
-            ret = helpTemplate(request )
-            requestType = "help"
-            for k,v in ret.items(): #fix later
-                embedVar.add_field(name=k, value=v, inline=True)
-
-        #sending back response
-        if any([True for i in requestInfo.values() if isinstance(i, (int, float)) and i == True]):
-            if type(ret) == str:
-                print(requestType)
-                await message.channel.send(ret)
-            else:
-                embedVar.add_field(name=requestType, value=''.join(ret), inline=False)
-                await message.channel.send(embed=embedVar)
-
-    def helpTemplate(request):
-        rep = dict()
-        req = request.split()
-        if len(req) > 1:
-            if req[1] == 'play':
-                rep['play'] = f'{symbol}play <link_o_video>'
-            elif req[1] == 'symbol':
-                rep['symbol'] = f'{symbol}symbol <new_symbol>'
-        else:
-            rep['Supported Commands'] = f'{symbol}help <command>\nplay\nsymbol'
-        return rep
-
-
-    client.run(DISCORD_TOKEN)
+       
+    bot.run(DISCORD_TOKEN)
 
 if __name__ == '__main__':
-    DUDE = DUDE()
-    discordInit(DUDE,DISCORD_TOKEN)
+    load_dotenv()
+    DISCORD_TOKEN = os.getenv('DISCORD_TOKEN')
+    discordInit(DISCORD_TOKEN)
+    
 
