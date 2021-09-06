@@ -3,7 +3,6 @@ from discord.ext import commands
 from dotenv import load_dotenv
 import youtube_dl
 import os
-import random
 import discord
 
 
@@ -26,9 +25,6 @@ def discordInit(DISCORD_TOKEN):
         'no_warnings': True,
         'default_search': 'auto',
         'source_address': '0.0.0.0' # bind to ipv4 since ipv6 addresses cause issues sometimes
-    }
-    ffmpeg_options = {
-        'options': '-vn'
     }
     ytdl = youtube_dl.YoutubeDL(ytdl_format_options)
     class YTDLSource(discord.PCMVolumeTransformer):
@@ -56,7 +52,7 @@ def discordInit(DISCORD_TOKEN):
         voice_channel = server.voice_client
         async with ctx.typing():
             filename = await YTDLSource.from_url(url, loop=bot.loop)
-            voice_channel.play(discord.FFmpegPCMAudio(executable="ffmpeg.exe", source=filename))
+            voice_channel.play(discord.FFmpegPCMAudio(executable= f"{os.getcwd()}/ffmpeg.exe", source=filename))
         await ctx.send(f'**Now playing:** {filename}')
 
     @bot.command(name='join', help='Bot joins voice channel')
@@ -115,5 +111,3 @@ if __name__ == '__main__':
     load_dotenv()
     DISCORD_TOKEN = os.getenv('DISCORD_TOKEN')
     discordInit(DISCORD_TOKEN)
-    
-
